@@ -18,9 +18,11 @@ namespace WandEnhancer.Core.Patching.Shared
         private const string BackupSuffix = ".integritybak";
         private const int HashLength = 64;
 
-        // electron-builder embeds: [{"file":"resources\\app.asar","alg":"SHA256","value":"<64 hex>"}]
-        private static readonly byte[] EmbeddingPrefix = Encoding.ASCII.GetBytes(
-            "[{\"file\":\"resources\\app.asar\",\"alg\":\"SHA256\",\"value\":\"");
+        // electron-builder embeds an integrity list, e.g.
+        //   [{"file":"resources\\app.asar","alg":"SHA256","value":"<64 hex>"}]
+        // How the archive path is escaped varies between builds, so the search anchors on the
+        // shape that carries no backslashes and checks the context for the archive name instead.
+        private static readonly byte[] ValueMarker = Encoding.ASCII.GetBytes("\"alg\":\"SHA256\",\"value\":\"");
 
         /// <summary>Overwrites the embedded expected header hash with the patched archive's.</summary>
         /// <returns>False when the embedding or the archive header could not be read.</returns>
@@ -118,10 +120,20 @@ namespace WandEnhancer.Core.Patching.Shared
         /// <summary>Locates the 64-hex value inside the executable, by embedding shape first.</summary>
         private static long FindEmbeddedHashOffset(byte[] image, string pristineAsarPath)
         {
-            long at = IndexOf(image, EmbeddingPrefix);
-            if (at >= 0)
+            long marker = IndexOf(image, ValueMarker, 0);
+            while (marker >= 0)
             {
-                return at + EmbeddingPrefix.Length;
+                long valueOffset = marker + ValueMarker.Length;
+                if (valueOffset + HashLength <= image.LongLength && LooksLikeArchiveEntry(image, marker))
+                {
+                    string candidate = Encoding.ASCII.GetString(image, (int)valueOffset, HashLength);
+                    if (IsHex(candidate))
+                    {
+                        return valueOffset;
+                    }
+                }
+
+                marker = IndexOf(image, ValueMarker, marker + 1);
             }
 
             // Unknown embedding shape: fall back to the shipped value, which is the header
@@ -132,7 +144,7 @@ namespace WandEnhancer.Core.Patching.Shared
                 if (pristineHash != null)
                 {
                     byte[] needle = Encoding.ASCII.GetBytes(pristineHash);
-                    long hashAt = IndexOf(image, needle);
+                    long hashAt = IndexOf(image, needle, 0);
                     if (hashAt >= 0)
                     {
                         return hashAt;
@@ -141,6 +153,15 @@ namespace WandEnhancer.Core.Patching.Shared
             }
 
             return -1;
+        }
+
+        /// <summary>The embedding's file name mentions the archive within a short window before the value.</summary>
+        private static bool LooksLikeArchiveEntry(byte[] image, long marker)
+        {
+            int windowStart = (int)Math.Max(0, marker - 160);
+            int windowLength = (int)(marker - windowStart);
+            string context = Encoding.ASCII.GetString(image, windowStart, windowLength);
+            return context.IndexOf("app.asar", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         /// <summary>SHA-256 of the archive's header JSON, as Electron computes it.</summary>
@@ -196,9 +217,9 @@ namespace WandEnhancer.Core.Patching.Shared
             return null;
         }
 
-        private static long IndexOf(byte[] haystack, byte[] needle)
+        private static long IndexOf(byte[] haystack, byte[] needle, long start)
         {
-            for (long i = 0; i <= haystack.LongLength - needle.Length; i++)
+            for (long i = Math.Max(0, start); i <= haystack.LongLength - needle.Length; i++)
             {
                 if (haystack[i] != needle[0])
                 {
