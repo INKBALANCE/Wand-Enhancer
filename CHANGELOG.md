@@ -3,6 +3,14 @@
 This file is the source of truth for release notes.
 The newest entry must match the version in `WandEnhancer/Properties/AssemblyInfo.cs`.
 
+## [2.1.1.0] - 2026-10-13
+
+### Fixes
+
+- Fixed the enhanced client failing to load the cheats into the game ("trouble loading cheats" dialog, trainer never injected) on Wand 12.62.0. That version upgraded Electron, and its builds refuse to perform the trainer injection whenever the ASAR integrity fuse is disabled - whatever value disables it, and regardless of the app itself running fine with Pro unlocked. The patcher no longer disables the fuse: it now re-points the ASAR header hash embedded in the executable at the patched archive, so the integrity validation passes with the check left enabled and the injection path stays intact. The executable's digital signature still breaks (any byte edit does), but the auxiliary service's trust check is neutralised for exactly that, as before.
+- Restoring a backup now also puts the shipped embedded hash back, and re-patching heals an install whose fuse was disabled by an older patcher version.
+- The in-memory (Supervised) patch method applies the same re-pointed hash and keeps the fuse enabled too, instead of clearing it in every process at launch.
+
 ## [2.1.0.0] - 2026-09-09
 
 ### Features

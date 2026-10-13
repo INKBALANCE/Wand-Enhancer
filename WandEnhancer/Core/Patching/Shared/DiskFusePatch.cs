@@ -10,6 +10,43 @@ namespace WandEnhancer.Core.Patching.Shared
     {
         private const string FuseBackupSuffix = ".fusebak";
 
+        /// <summary>
+        /// The state Wand ships with. The fuse must stay in this state: Electron builds shipped with
+        /// Wand 12.62.0 fail to inject the trainer at game launch whenever the fuse is disabled,
+        /// whatever value disables it. <see cref="AsarIntegrityHashPatch"/> makes validation pass
+        /// with the fuse enabled, so disabling it is no longer needed at all.
+        /// </summary>
+        public const byte StateEnabled = (byte)'1';
+
+        /// <summary>
+        /// Forces the ASAR-integrity fuse back to its shipped enabled state, healing an install left
+        /// disabled by an older patcher version or by hand. Creates no backup: enabled is the shipped value.
+        /// </summary>
+        public static void EnsureEnabled(string exePath, Action<string, ELogType> log)
+        {
+            long offset = ElectronFuseWire.FindStateFileOffset(exePath);
+            if (offset < 0)
+            {
+                log?.Invoke($"[ENHANCER] No Electron fuse block in {Path.GetFileName(exePath)}; leaving it alone.", ELogType.Warn);
+                return;
+            }
+
+            using (var stream = new FileStream(exePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
+            {
+                stream.Position = offset;
+                int current = stream.ReadByte();
+                if (current == StateEnabled || current == -1)
+                {
+                    return;
+                }
+
+                stream.Position = offset;
+                stream.WriteByte(StateEnabled);
+            }
+
+            log?.Invoke($"[ENHANCER] ASAR integrity fuse re-enabled in {Path.GetFileName(exePath)}; the embedded hash covers the patched archive.", ELogType.Info);
+        }
+
         public static bool Apply(string exePath, Action<string, ELogType> log)
         {
             long offset = ElectronFuseWire.FindStateFileOffset(exePath);

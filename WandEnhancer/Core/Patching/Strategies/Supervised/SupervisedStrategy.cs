@@ -26,7 +26,27 @@ namespace WandEnhancer.Core.Patching.Strategies.Supervised
 
         public bool RequiresLauncherAlways => true;
 
-        public void ApplyEnablement(PatchContext context){}
+        public void ApplyEnablement(PatchContext context)
+        {
+            // Same reasoning as StaticStrategy: the patched archive is validated rather than the
+            // check being disabled, because a disabled fuse breaks trainer injection at game
+            // launch on Electron builds shipped with Wand 12.62.0.
+            if (context.UnpackedPath == null)
+            {
+                return;
+            }
+
+            string asarPath = System.IO.Path.Combine(
+                System.IO.Path.GetDirectoryName(context.UnpackedPath), "app.asar");
+            if (!AsarIntegrityHashPatch.Apply(context.Install.ExecutablePath, asarPath,
+                    asarPath + ".backup", context.Log))
+            {
+                throw new Exception($"[ENHANCER] Could not re-point the ASAR integrity hash in " +
+                                    $"{System.IO.Path.GetFileName(context.Install.ExecutablePath)}. The version may not be supported.");
+            }
+
+            DiskFusePatch.EnsureEnabled(context.Install.ExecutablePath, context.Log);
+        }
 
         private sealed class PendingClear
         {

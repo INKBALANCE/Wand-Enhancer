@@ -67,7 +67,10 @@ namespace WandEnhancer.Core.Patching.Strategies.Supervised
                 return false;
             }
 
-            bool written = WriteProcessMemory(process, target, new[] { ElectronFuseWire.StateRemoved }, (UIntPtr)1, out _);
+            // Written as the shipped enabled state, making the runtime pass a no-op: the archive is
+            // validated via AsarIntegrityHashPatch instead, and a disabled fuse breaks trainer
+            // injection at game launch on Electron builds shipped with Wand 12.62.0.
+            bool written = WriteProcessMemory(process, target, new[] { DiskFusePatch.StateEnabled }, (UIntPtr)1, out _);
             if (!written)
             {
                 // Preserve the error before restoring memory protection.

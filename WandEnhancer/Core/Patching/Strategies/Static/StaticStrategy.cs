@@ -15,10 +15,20 @@ namespace WandEnhancer.Core.Patching.Strategies.Static
 
         public void ApplyEnablement(PatchContext context)
         {
-            if (!DiskFusePatch.Apply(context.Install.ExecutablePath, context.Log))
+            // The integrity fuse stays enabled: Electron builds shipped with Wand 12.62.0 fail to
+            // inject the trainer at game launch whenever the fuse is disabled. The expectation
+            // embedded in the executable is re-pointed at the patched archive instead, so the
+            // validation passes with the check left on.
+            string asarPath = Path.Combine(Path.GetDirectoryName(context.UnpackedPath), "app.asar");
+            string pristineAsarPath = asarPath + ".backup";
+
+            if (!AsarIntegrityHashPatch.Apply(context.Install.ExecutablePath, asarPath, pristineAsarPath, context.Log))
             {
-                throw new Exception($"[ENHANCER] Could not clear the ASAR integrity fuse in {Path.GetFileName(context.Install.ExecutablePath)}.");
+                throw new Exception($"[ENHANCER] Could not re-point the ASAR integrity hash in {Path.GetFileName(context.Install.ExecutablePath)}. The version may not be supported.");
             }
+
+            // Heal an install whose fuse was disabled by an older patcher version or by hand.
+            DiskFusePatch.EnsureEnabled(context.Install.ExecutablePath, context.Log);
 
             string aux = FindAuxiliary(context.UnpackedPath);
             if (aux == null)

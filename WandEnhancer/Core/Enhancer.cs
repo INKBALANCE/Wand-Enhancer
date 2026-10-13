@@ -290,6 +290,7 @@ namespace WandEnhancer.Core
                 // Undo on-disk fuse and launcher deployment to prevent a tampered unlaunchable Wand.
                 LauncherDeployment.Restore(_weModConfig);
                 DiskFusePatch.Remove(_weModConfig.ExecutablePath, _logger);
+                AsarIntegrityHashPatch.Remove(_weModConfig.ExecutablePath, _logger);
 
                 _logger("[ENHANCER] Patch failed - the original Wand files were restored.", ELogType.Warn);
             }
@@ -324,9 +325,10 @@ namespace WandEnhancer.Core
                 File.Delete(proxyDllPath);
             }
 
-            // Undo all footprints at once: launcher stub and on-disk fuse.
+            // Undo all footprints at once: launcher stub, on-disk fuse and re-pointed integrity hash.
             LauncherDeployment.Restore(_weModConfig);
             DiskFusePatch.Remove(_weModConfig.ExecutablePath, _logger);
+            AsarIntegrityHashPatch.Remove(_weModConfig.ExecutablePath, _logger);
 
             string squirrelRoot = SquirrelRoot;
             foreach (var leftover in new[]
